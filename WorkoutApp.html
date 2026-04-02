@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coach Ahmed - Dashboard</title>
+    
+    <!-- 1. تحميل React -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- 2. تحميل Babel لترجمة الـ JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 3. تحميل Tailwind CSS للتنسيق -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 4. تحميل Lucide Icons (نسخة الـ Web) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // استخراج المكونات من React
+        const { useState, useEffect, useRef } = React;
+
+        // تعريف الأيقونات يدوياً لأن Lucide-React تعمل كحزم Node
+        // ملاحظة: في بيئة المتصفح البسيطة نستخدم Lucide مباشرة
+        const Icon = ({ name, size = 24, className = "" }) => {
+            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        };
+
+        // هنا تضع كود الـ App الخاص بك الذي أرسلته 
+        // (ملاحظة: يجب استبدال مكونات Lucide-React بأيقونات HTML عادية أو مكتبة CDN)
+        
+        const App = () => {
+            // ... ضع كل كود الـ JavaScript والـ JSX الذي أرسلته هنا ...
+            return (
+                <div className="min-h-screen bg-[#020617] text-white">
+                   {/* محتوى التطبيق */}
+                   <h1 className="p-10 text-center text-4xl font-black italic">COACH <span className="text-[#00d2ff]">AHMED</span></h1>
+                   <p className="text-center">يرجى تشغيل الكود في بيئة React كاملة (Vite أو Create React App)</p>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+        
+        // تفعيل الأيقونات بعد الرندر
+        setTimeout(() => lucide.createIcons(), 500);
+    </script>
+</body>
+</html>
