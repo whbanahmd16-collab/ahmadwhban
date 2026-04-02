@@ -1,0 +1,425 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Dumbbell, Utensils, Calendar, Clock, CheckCircle2, Trophy, Zap, Check, 
+  FileText, MessageCircle, XCircle, LayoutDashboard, LogOut, ShieldCheck, 
+  Star, Lock, Ghost, Camera, Play, StopCircle, RefreshCw, UploadCloud, 
+  Stethoscope, Cpu, Instagram, TrendingUp, Activity, Link as LinkIcon, Eye
+} from 'lucide-react';
+
+const App = () => {
+  // --- States ---
+  const [currentView, setCurrentView] = useState('landing'); 
+  const [isCVModalOpen, setIsCVModalOpen] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginError, setLoginError] = useState(false);
+  const [activeTab, setActiveTab] = useState('workout');
+  const [activeDay, setActiveDay] = useState(0);
+
+  // --- Persistence States ---
+  const [completedExercises, setCompletedExercises] = useState({});
+  const [completedMeals, setCompletedMeals] = useState({});
+  const [exerciseVideos, setExerciseVideos] = useState({});
+
+  // --- Recorder States ---
+  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
+  const [activeRecordingExId, setActiveRecordingExId] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState(null);
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const [recordedChunks, setRecordedChunks] = useState([]);
+
+  const traineesDatabase = {
+    "A555": { name: "أحمد وهبان", target: "هندسة أداء", weight: "85 كجم", prevWeight: "92 كجم", code: "A555" },
+    "M111": { name: "مهند حكمي", target: "تنشيف / بناء", weight: "119 كجم", prevWeight: "128 كجم", code: "M111" }
+  };
+
+  const defaultWorkoutPlan = [
+    {
+      id: 'day1',
+      day: "اليوم الأول (أرجل خلفية وظهر)",
+      exercises: [
+        { id: 'd1e1', name: "RDL deadlift", sets: "3", reps: "7-9", weight: "85" },
+        { id: 'd1e2', name: "Kneeling Leg Curl", sets: "3", reps: "12-15", weight: "25" },
+        { id: 'd1e3', name: "Shrug", sets: "3", reps: "15-20", weight: "25" },
+        { id: 'd1e4', name: "Seated Row machine", sets: "3", reps: "12", weight: "40" }
+      ]
+    },
+    {
+      id: 'day2',
+      day: "اليوم الثاني (صدر وظهر وذراع)",
+      exercises: [
+        { id: 'd2e1', name: "Bench press", sets: "3", reps: "9-11", weight: "60" },
+        { id: 'd2e2', name: "Lat Pulldown", sets: "3", reps: "12", weight: "45" }
+      ]
+    }
+  ];
+
+  const nutritionPlan = [
+    { id: 'm1', title: "الإفطار", items: ["شريحة توست", "زبدة فول سوداني (20 جم)", "بيض (2)"] },
+    { id: 'm2', title: "الغداء", items: ["صدور دجاج (150 جم)", "أرز (50 جم)"] },
+    { id: 'm3', title: "عشاء", items: ["سلمون (150 جم)", "بطاطس (150 جم)"] }
+  ];
+
+  // --- Effects ---
+  useEffect(() => {
+    if (currentUser) {
+      const code = currentUser.code;
+      const savedEx = localStorage.getItem(`wahban_ex_${code}`);
+      const savedMeals = localStorage.getItem(`wahban_meals_${code}`);
+      const savedVideos = localStorage.getItem(`wahban_vids_${code}`);
+      if (savedEx) setCompletedExercises(JSON.parse(savedEx));
+      if (savedMeals) setCompletedMeals(JSON.parse(savedMeals));
+      if (savedVideos) setExerciseVideos(JSON.parse(savedVideos));
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      const code = currentUser.code;
+      localStorage.setItem(`wahban_ex_${code}`, JSON.stringify(completedExercises));
+      localStorage.setItem(`wahban_meals_${code}`, JSON.stringify(completedMeals));
+      localStorage.setItem(`wahban_vids_${code}`, JSON.stringify(exerciseVideos));
+    }
+  }, [completedExercises, completedMeals, exerciseVideos, currentUser]);
+
+  // --- Handlers ---
+  const handleLogin = () => {
+    const code = accessCode.toUpperCase().trim();
+    if (traineesDatabase[code]) {
+      setCurrentUser(traineesDatabase[code]);
+      setLoginError(false);
+      setCurrentView('app');
+    } else {
+      setLoginError(true);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setAccessCode('');
+    setCurrentView('landing');
+  };
+
+  const toggleExercise = (id) => setCompletedExercises(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleMeal = (id) => setCompletedMeals(prev => ({ ...prev, [id]: !prev[id] }));
+  const updateVideoLink = (exId, link) => setExerciseVideos(prev => ({ ...prev, [exId]: link }));
+
+  const calculateProgress = (dayIdx) => {
+    const exercises = defaultWorkoutPlan[dayIdx].exercises;
+    const completedCount = exercises.filter(ex => completedExercises[ex.id]).length;
+    return Math.round((completedCount / exercises.length) * 100);
+  };
+
+  const calculateNutritionProgress = () => {
+    const completedCount = nutritionPlan.filter(m => completedMeals[m.id]).length;
+    return Math.round((completedCount / nutritionPlan.length) * 100);
+  };
+
+  // --- Recorder Logic ---
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.ondataavailable = (e) => e.data.size > 0 && setRecordedChunks(prev => [...prev, e.data]);
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        setRecordedVideoUrl(URL.createObjectURL(blob));
+      };
+    } catch (err) { console.error(err); }
+  };
+
+  const startRecording = () => { setRecordedChunks([]); mediaRecorderRef.current.start(); setIsRecording(true); };
+  const stopRecording = () => { mediaRecorderRef.current.stop(); setIsRecording(false); videoRef.current.srcObject.getTracks().forEach(t => t.stop()); };
+
+  // --- Components ---
+  const LandingPage = () => (
+    <div className="min-h-screen bg-[#020617] text-white overflow-x-hidden" dir="rtl">
+      <nav className="fixed top-0 w-full z-50 px-6 py-5 bg-[#0f172a]/80 backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <button onClick={() => setIsCVModalOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-[#00d2ff] transition-all text-xs font-bold italic">
+            <FileText size={16} /> السيرة الذاتية
+          </button>
+          <div className="flex items-center gap-3">
+            <Dumbbell className="text-[#00d2ff] w-6 h-6" />
+            <h1 className="text-xl font-black italic uppercase">COACH <span className="text-[#00d2ff]">AHMED</span></h1>
+          </div>
+          <button onClick={() => setCurrentView('login')} className="px-6 py-2 bg-[#00d2ff] text-black text-xs font-black rounded-xl uppercase italic shadow-lg shadow-[#00d2ff]/20">دخول الأعضاء</button>
+        </div>
+      </nav>
+
+      <section className="relative min-h-screen flex flex-col justify-center items-center px-6 pt-32 text-center hero-gradient">
+        <div className="relative z-10 max-w-5xl animate-fade-in flex flex-col items-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full mb-8 border border-[#00d2ff]/20 backdrop-blur-sm">
+            <Star className="text-[#00d2ff] w-4 h-4 fill-[#00d2ff]" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 italic">أخصائي أداء رياضي معتمد</span>
+          </div>
+          <h2 className="text-5xl md:text-8xl font-black italic uppercase tracking-tighter leading-none mb-12">
+            الأداء <br/>
+            <span className="text-[#00d2ff]">يُهندس هنا</span>
+          </h2>
+          <div className="max-w-4xl bg-white/5 p-10 rounded-[3rem] border border-white/10 backdrop-blur-xl mb-16 text-center shadow-2xl">
+             <p className="text-gray-200 text-lg leading-relaxed font-bold italic">
+               أخصائي أداء بدني وقوة وتكيف ذو خلفية أكاديمية، أرتكز في منهجي على دمج علوم الميكانيكا الحيوية لتقديم حلول تدريبية شاملة تضمن الوصول للنتائج.
+             </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-6 w-full max-w-lg">
+            <a href="#pricing" className="flex-1 px-10 py-5 bg-[#00d2ff] text-black font-black rounded-2xl text-sm uppercase italic shadow-xl text-center no-underline">استكشف الباقات</a>
+            <a href="https://wa.me/966546780005" target="_blank" className="flex-1 px-10 py-5 bg-white/5 text-white font-black rounded-2xl text-sm uppercase italic border border-white/10 flex items-center gap-3 justify-center no-underline">تواصل مباشر <MessageCircle size={20} /></a>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section - Fixed className errors */}
+      <section id="pricing" className="py-40 px-6 bg-[#020617]">
+        <div className="max-w-7xl mx-auto text-center">
+            <h3 className="text-4xl font-black italic uppercase mb-24 text-white">باقات <span className="text-[#00d2ff]">التحول البدني</span></h3>
+            <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-10 max-w-6xl mx-auto">
+                {/* Online */}
+                <div className="p-10 rounded-[3rem] bg-[#0f172a] border border-white/5 flex flex-col text-right relative overflow-hidden shadow-2xl">
+                    <h4 className="text-2xl font-black italic text-white mb-8 uppercase">التدريب أونلاين</h4>
+                    <div className="mb-10">
+                        <span className="text-gray-500 line-through block text-sm italic font-black">200 ريال</span>
+                        <span className="text-7xl font-black italic text-white tracking-tighter">149</span>
+                        <span className="text-xs text-gray-400 uppercase italic mr-2 font-black">ريال / شهر</span>
+                    </div>
+                    <ul className="space-y-4 mb-10 text-sm font-bold text-gray-400 italic flex-grow">
+                        <li className="flex items-center gap-3 justify-end">جدول تمارين مخصص <Check size={18} className="text-[#00d2ff]" /></li>
+                        <li className="flex items-center gap-3 justify-end">نظام تغذية مرن <Check size={18} className="text-[#00d2ff]" /></li>
+                        <li className="flex items-center gap-3 justify-end">متابعة عبر المنصة <Check size={18} className="text-[#00d2ff]" /></li>
+                    </ul>
+                    <a href="https://wa.me/966546780005" className="block w-full py-5 bg-white/5 text-white font-black rounded-2xl text-center border border-white/10 hover:bg-[#00d2ff] hover:text-black transition-all italic no-underline uppercase text-xs">اشترك الآن</a>
+                </div>
+
+                {/* Personal */}
+                <div className="p-10 rounded-[3rem] bg-[#0c1a3a] border-2 border-[#00d2ff]/40 shadow-2xl scale-105 flex flex-col text-right relative z-10">
+                    <div className="absolute top-6 left-6 bg-[#00d2ff] text-black px-4 py-1 rounded-full text-[9px] font-black uppercase italic shadow-xl">الأكثر طلباً</div>
+                    <h4 className="text-2xl font-black italic text-white mb-8 uppercase">التدريب الشخصي</h4>
+                    <div className="mb-10">
+                        <span className="text-gray-400 line-through block text-sm italic font-black">1900 ريال</span>
+                        <span className="text-7xl font-black italic text-white tracking-tighter">1500</span>
+                        <span className="text-xs text-gray-400 uppercase italic mr-2 font-black">ريال / شهر</span>
+                    </div>
+                    <ul className="space-y-4 mb-10 text-sm font-bold text-gray-200 italic flex-grow">
+                        <li className="flex items-center gap-3 justify-end">إشراف فني مباشر 1-on-1 <Check size={18} className="text-[#00d2ff]" /></li>
+                        <li className="flex items-center gap-3 justify-end">هندسة الميكانيكا الحيوية <Check size={18} className="text-[#00d2ff]" /></li>
+                        <li className="flex items-center gap-3 justify-end">برمجة أحمال متقدمة <Check size={18} className="text-[#00d2ff]" /></li>
+                    </ul>
+                    <a href="https://wa.me/966546780005" className="block w-full py-5 bg-[#00d2ff] text-black font-black rounded-2xl text-center shadow-2xl hover:brightness-110 transition-all italic no-underline uppercase text-xs">احجز مقعدك</a>
+                </div>
+
+                {/* Football */}
+                <div className="p-10 rounded-[3rem] bg-[#0f172a] border border-white/5 flex flex-col text-right relative grayscale opacity-60">
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-center justify-center z-20">
+                        <span className="bg-[#00d2ff] text-black px-8 py-2 rounded-full font-black italic text-xs uppercase -rotate-12">قريباً</span>
+                    </div>
+                    <h4 className="text-2xl font-black italic text-gray-500 mb-8 uppercase">إعداد لاعبي القدم</h4>
+                    <div className="mb-10"><span className="text-6xl font-black italic text-gray-700">Athletes</span></div>
+                </div>
+            </div>
+        </div>
+      </section>
+
+      <footer className="py-20 bg-black text-center border-t border-white/5">
+        <h2 className="text-2xl font-black italic text-white mb-4 uppercase">COACH <span className="text-[#00d2ff]">AHMED</span></h2>
+        <p className="text-gray-600 text-[10px] font-black uppercase italic mb-8">Personal Trainer | S&C Specialist</p>
+        <div className="flex justify-center gap-8">
+           <a href="https://wa.me/966546780005" className="text-gray-600 hover:text-[#00d2ff]"><MessageCircle size={24} /></a>
+           <a href="#" className="text-gray-600 hover:text-[#00d2ff]"><Instagram size={24} /></a>
+           <a href="#" className="text-gray-600 hover:text-[#00d2ff]"><Ghost size={24} /></a>
+        </div>
+      </footer>
+    </div>
+  );
+
+  const Dashboard = () => (
+    <div className="min-h-screen bg-[#080d17] text-white p-4 md:p-10" dir="rtl">
+      <header className="max-w-6xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-center bg-[#111b2d] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+        <div className="flex items-center gap-6">
+          <div className="bg-[#00d2ff]/10 p-4 rounded-2xl border border-[#00d2ff]/20">
+             <LayoutDashboard size={32} className="text-[#00d2ff]" />
+          </div>
+          <div className="text-right">
+            <h1 className="text-2xl font-black italic text-white">أهلاً <span className="text-[#00d2ff]">{currentUser?.name}</span></h1>
+            <p className="text-gray-500 text-[9px] font-black tracking-widest uppercase mt-1 italic">Dashboard • {currentUser?.code}</p>
+          </div>
+        </div>
+        <div className="flex gap-4 mt-6 md:mt-0">
+          <div className="bg-black/30 px-6 py-2 rounded-xl border border-white/5 text-center">
+            <span className="text-[8px] text-gray-500 block font-black mb-1 uppercase">الوزن</span>
+            <span className="text-[#00d2ff] font-black text-xs italic">{currentUser?.weight}</span>
+          </div>
+          <button onClick={handleLogout} className="p-4 bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-500 rounded-xl transition-all">
+             <LogOut size={20} />
+          </button>
+        </div>
+      </header>
+
+      <nav className="max-w-6xl mx-auto mb-8 flex p-1.5 bg-[#111b2d] rounded-2xl border border-white/5 sticky top-4 z-50">
+        <button onClick={() => setActiveTab('workout')} className={`flex-1 py-4 rounded-xl transition-all text-xs font-black italic flex items-center justify-center gap-2 ${activeTab === 'workout' ? 'bg-[#00d2ff] text-black shadow-lg shadow-[#00d2ff]/20' : 'text-gray-500 hover:text-gray-200'}`}>
+          <Dumbbell size={18} /> التمارين
+        </button>
+        <button onClick={() => setActiveTab('nutrition')} className={`flex-1 py-4 rounded-xl transition-all text-xs font-black italic flex items-center justify-center gap-2 ${activeTab === 'nutrition' ? 'bg-[#00d2ff] text-black shadow-lg shadow-[#00d2ff]/20' : 'text-gray-500 hover:text-gray-200'}`}>
+          <Utensils size={18} /> التغذية
+        </button>
+      </nav>
+
+      <main className="max-w-6xl mx-auto">
+        {activeTab === 'workout' && (
+          <div className="space-y-8 animate-fade-in">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {defaultWorkoutPlan.map((day, idx) => (
+                <button key={idx} onClick={() => setActiveDay(idx)} className={`min-w-[140px] px-6 py-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 ${activeDay === idx ? 'bg-[#00d2ff]/10 border-[#00d2ff] text-[#00d2ff]' : 'bg-white/5 border-transparent text-gray-600'}`}>
+                   <span className="text-[9px] font-black uppercase italic">يوم {idx + 1}</span>
+                   <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
+                      <div className="bg-[#00d2ff] h-full" style={{width: `${calculateProgress(idx)}%`}}></div>
+                   </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-[#111b2d] rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
+              <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
+                 <h2 className="text-xl font-black italic text-white flex items-center gap-4 justify-end w-full">
+                    {defaultWorkoutPlan[activeDay]?.day} <Calendar className="text-[#00d2ff]" size={24} />
+                 </h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-black/20 text-gray-500 text-[9px] font-black uppercase tracking-widest">
+                      <th className="p-6 w-20 text-center">تم</th>
+                      <th className="p-6">التمرين</th>
+                      <th className="p-6 w-20 text-center">الجلسات</th>
+                      <th className="p-6 w-20 text-center">العدات</th>
+                      <th className="p-6 w-40 text-center">الوزن</th>
+                      <th className="p-6 text-center">فيديو الأداء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {defaultWorkoutPlan[activeDay]?.exercises.map((ex) => (
+                      <tr key={ex.id} className={`transition-all ${completedExercises[ex.id] ? 'bg-[#00d2ff]/5 opacity-60' : ''}`}>
+                        <td className="p-6 text-center">
+                          <button onClick={() => toggleExercise(ex.id)} className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center transition-all ${completedExercises[ex.id] ? 'bg-[#00d2ff] border-[#00d2ff]' : 'border-white/10'}`}>
+                             {completedExercises[ex.id] && <Check size={20} className="text-black" />}
+                          </button>
+                        </td>
+                        <td className="p-6"><span className="text-base font-black italic text-white">{ex.name}</span></td>
+                        <td className="p-6 text-center font-black text-[#00d2ff] italic">{ex.sets}</td>
+                        <td className="p-6 text-center font-black text-gray-400 italic">{ex.reps}</td>
+                        <td className="p-6 text-center"><span className="text-[#00d2ff] font-black italic">{ex.weight} Kg</span></td>
+                        <td className="p-6 text-center">
+                          <div className="flex items-center gap-2 justify-center">
+                             <button onClick={() => { setActiveRecordingExId(ex.id); setIsRecordingModalOpen(true); startCamera(); }} className="p-3 bg-[#00d2ff]/10 text-[#00d2ff] rounded-xl hover:bg-[#00d2ff] hover:text-black transition-all"><Camera size={18} /></button>
+                             <div className="flex items-center gap-2 bg-black/40 px-3 py-2 rounded-xl border border-white/10">
+                                <LinkIcon size={12} className="text-gray-600" />
+                                <input type="text" value={exerciseVideos[ex.id] || ''} onChange={(e) => updateVideoLink(ex.id, e.target.value)} placeholder="رابط فيديو" className="bg-transparent outline-none text-[9px] font-bold text-[#00d2ff] w-20" />
+                                {exerciseVideos[ex.id] && <a href={exerciseVideos[ex.id]} target="_blank" className="text-[#00d2ff]"><Eye size={12} /></a>}
+                             </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'nutrition' && (
+          <div className="space-y-8 animate-fade-in">
+             <div className="bg-[#111b2d] p-10 rounded-[3rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+                <div className="text-right">
+                  <h3 className="text-3xl font-black italic text-white mb-2">تتبع الماكروز <Utensils className="text-[#00d2ff] inline ml-4" size={32} /></h3>
+                  <p className="text-sm text-gray-500 font-bold italic">التزامك بالتغذية هو مفتاح النتائج</p>
+                </div>
+                <div className="text-3xl font-black italic text-[#00d2ff]">{calculateNutritionProgress()}%</div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              {nutritionPlan.map((meal) => (
+                <div key={meal.id} onClick={() => toggleMeal(meal.id)} className={`p-8 bg-[#111b2d] rounded-[2.5rem] border-2 cursor-pointer transition-all ${completedMeals[meal.id] ? 'border-[#00d2ff]/30 opacity-60' : 'border-white/5 shadow-xl'}`}>
+                  <div className="flex justify-between items-center mb-6">
+                    <Clock size={20} className="text-[#00d2ff]" />
+                    <h3 className="text-xl font-black italic text-white">{meal.title}</h3>
+                  </div>
+                  <ul className="space-y-4 text-right">
+                    {meal.items.map((item, idx) => (
+                      <li key={idx} className="text-sm font-bold italic text-gray-400 flex items-center justify-end gap-3">
+                        {item} <div className="w-2 h-2 bg-[#00d2ff] rounded-full"></div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Recording Modal */}
+      {isRecordingModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl animate-fade-in">
+            <div className="w-full max-w-lg bg-[#0f172a] rounded-[2.5rem] p-8 text-center shadow-2xl border border-white/10">
+                <button onClick={() => { setIsRecordingModalOpen(false); }} className="absolute top-6 left-6 text-gray-500 hover:text-white"><XCircle size={32} /></button>
+                <h3 className="text-xl font-black text-white mb-6 italic uppercase tracking-tighter">تسجيل جولة الأداء</h3>
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-white/5 relative">
+                    {!recordedVideoUrl ? <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" /> : <video src={recordedVideoUrl} controls className="w-full h-full object-cover" />}
+                </div>
+                <div className="flex gap-4">
+                    {!recordedVideoUrl ? (
+                        !isRecording ? <button onClick={startRecording} className="flex-1 py-4 bg-[#00d2ff] text-black font-black rounded-xl text-xs uppercase italic tracking-widest"><Play size={16} className="inline mr-2" /> ابدأ التسجيل</button>
+                        : <button onClick={stopRecording} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl text-xs uppercase italic animate-pulse"><StopCircle size={16} className="inline mr-2" /> إيقاف وحفظ</button>
+                    ) : (
+                        <button onClick={() => { setIsRecordingModalOpen(false); setRecordedVideoUrl(null); }} className="flex-1 py-4 bg-[#00d2ff] text-black font-black rounded-xl text-xs uppercase italic tracking-widest">تم الحفظ</button>
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#020617] font-sans">
+      {currentView === 'landing' ? <LandingPage /> : currentView === 'login' ? (
+        <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6" dir="rtl">
+          <div className="w-full max-w-sm bg-[#0f172a] rounded-[2.5rem] p-10 text-center shadow-2xl border border-white/5">
+            <h2 className="text-2xl font-black italic text-white mb-8">منصة <span className="text-[#00d2ff]">الأبطال</span></h2>
+            <input type="text" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl py-4 text-center text-2xl font-black text-[#00d2ff] mb-6 outline-none" placeholder="XXXX" />
+            <button onClick={handleLogin} className="w-full bg-[#00d2ff] text-black font-black py-4 rounded-xl text-xs uppercase italic tracking-widest">دخول</button>
+            <button onClick={() => setCurrentView('landing')} className="mt-4 text-gray-500 text-[10px] font-black uppercase italic hover:text-white">الرجوع</button>
+          </div>
+        </div>
+      ) : <Dashboard />}
+      
+      {/* CV Modal - Simplified for robustness */}
+      {isCVModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95 backdrop-blur-xl" onClick={() => setIsCVModalOpen(false)}>
+          <div className="w-full max-w-2xl bg-[#0f172a] rounded-[3rem] p-10 overflow-y-auto max-h-[80vh] text-right" onClick={e => e.stopPropagation()}>
+            <h2 className="text-3xl font-black text-white mb-6 italic">أحمد وهبان</h2>
+            <div className="space-y-4">
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/5"><h4 className="text-[#00d2ff] font-black text-lg italic">مدرب شخصي معترف به (CPT)</h4><p className="text-gray-400 text-xs mt-2">وزارة الرياضة - المملكة العربية السعودية</p></div>
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/5"><h4 className="text-[#00d2ff] font-black text-lg italic">أخصائي قوة وتكيف (S&C)</h4><p className="text-gray-400 text-xs mt-2">منظمة IFA الدولية</p></div>
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/5"><h4 className="text-[#00d2ff] font-black text-lg italic">بكالوريوس إدارة خدمات طبية</h4><p className="text-gray-400 text-xs mt-2">جامعة الملك عبدالعزيز</p></div>
+            </div>
+            <button onClick={() => setIsCVModalOpen(false)} className="mt-8 w-full py-4 bg-white/5 text-gray-400 font-black rounded-xl italic">إغلاق</button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+        body { font-family: 'Tajawal', sans-serif; }
+        .hero-gradient { background: radial-gradient(circle at top right, #0c4a6e 0%, #020617 75%); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.8s ease-out forwards; }
+      `}</style>
+    </div>
+  );
+};
+
+export default App;
